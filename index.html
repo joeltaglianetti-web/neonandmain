@@ -8,7 +8,10 @@
 <meta property="og:url" content="https://neonandmain.com/">
 <meta property="og:type" content="website">
 <link rel="canonical" href="https://neonandmain.com/">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230F1626'/%3E%3Ctext x='32' y='46' font-family='Arial Rounded MT Bold,Arial,sans-serif' font-size='42' text-anchor='middle' fill='%23EAF8FF' stroke='%238FD6FF' stroke-width='1.5'%3E%26%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:image" content="https://neonandmain.com/icon-512.png">
 <style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Neon &amp; Main | Websites for local businesses</title>
 <meta name="claude:viewport-fit-sides" content="cover">
@@ -320,6 +323,7 @@ a{color:inherit}
 .status{grid-column:1/-1;display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:16px;background:var(--accent-soft)}
 .status p{font-size:var(--t-sm)}
 .status textarea{font:inherit;font-size:14px;min-height:130px;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);width:100%}
+.status.ok{background:var(--accent-soft)}
 .status .btn{grid-column:auto;align-self:flex-start;padding:11px 18px;font-size:var(--t-sm)}
 
 /* Footer */
@@ -685,10 +689,15 @@ a{color:inherit}
         <div class="field"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required></div>
         <div class="field full"><label for="f-site">Current website <small>(if you have one)</small></label><input id="f-site" name="site" type="url" placeholder="https://"></div>
         <div class="field full"><label for="f-notes">What should customers be able to do on your site? <small>(optional)</small></label><textarea id="f-notes" name="notes" placeholder="Call us, see our menu, book an appointment, request a quote..."></textarea></div>
+        <input type="checkbox" id="f-botcheck" name="botcheck" tabindex="-1" autocomplete="off" aria-hidden="true" style="display:none">
         <button class="btn btn-accent" type="submit">Request my free mockup</button>
-        <p class="form-note">This opens your email app with your request filled in. We never share your details.</p>
+        <p class="form-note">We reply by email to set up your quick call. We never share your details.</p>
+        <div class="status ok" id="form-ok" hidden role="status">
+          <p><b>Thanks, <span id="ok-name">there</span>. Your request is in.</b></p>
+          <p>We'll email you shortly to set up a quick call, then get started on your free mockup.</p>
+        </div>
         <div class="status" id="form-status" hidden>
-          <p>Your email app should open with this request ready to send. If it didn't, copy it and email it to <b data-email>hello@neonandmain.com</b>.</p>
+          <p>We couldn't send that automatically. Your email app should open with this request ready to send. If it didn't, copy it and email it to <b data-email>hello@neonandmain.com</b>.</p>
           <textarea id="composed" readonly aria-label="Your request"></textarea>
           <button class="btn btn-outline" type="button" id="copy-request">Copy request</button>
         </div>
@@ -836,7 +845,7 @@ if (!reduced && 'IntersectionObserver' in window) {
   io.observe(document.getElementById('neon'));
 }
 
-// Copy helpers and the mockup request form
+// Copy helpers
 function copyText(text, btn, fallbackEl) {
   const done = () => { const t = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = t; }, 1600); };
   try {
@@ -845,10 +854,14 @@ function copyText(text, btn, fallbackEl) {
 }
 document.getElementById('copy-email').addEventListener('click', e => copyText(CONFIG.email, e.currentTarget));
 
+// Mockup request form. Submissions go through Web3Forms to the address the access key was created with.
+const WEB3FORMS_KEY = '8fc65d3e-d9d7-4e47-995b-2a7932f5028a';
 const form = document.getElementById('mockup-form');
 const statusBox = document.getElementById('form-status');
+const okBox = document.getElementById('form-ok');
 const composed = document.getElementById('composed');
-form.addEventListener('submit', e => {
+const submitBtn = form.querySelector('button[type="submit"]');
+form.addEventListener('submit', async e => {
   e.preventDefault();
   const v = id => document.getElementById(id).value.trim();
   const subject = 'Free mockup request: ' + v('f-business');
@@ -861,9 +874,33 @@ form.addEventListener('submit', e => {
     '',
     v('f-notes')
   ].join('\n').trim();
-  composed.value = 'To: ' + CONFIG.email + '\nSubject: ' + subject + '\n\n' + body;
-  statusBox.hidden = false;
-  window.location.href = 'mailto:' + CONFIG.email + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  const fallback = () => {
+    composed.value = 'To: ' + CONFIG.email + '\nSubject: ' + subject + '\n\n' + body;
+    statusBox.hidden = false;
+    window.location.href = 'mailto:' + CONFIG.email + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+  };
+  if (!WEB3FORMS_KEY || WEB3FORMS_KEY === 'PASTE_KEY_HERE') { fallback(); return; }
+  submitBtn.disabled = true; submitBtn.textContent = 'Sending...';
+  try {
+    const res = await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_KEY, subject, from_name: CONFIG.brand + ' website', replyto: v('f-email'),
+        name: v('f-name'), business: v('f-business'), town: v('f-town'), email: v('f-email'),
+        current_website: v('f-site') || 'none', message: v('f-notes') || '(none)',
+        botcheck: document.getElementById('f-botcheck').checked
+      })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'failed');
+    form.querySelectorAll('.field, .form-note, button[type="submit"]').forEach(el => { el.hidden = true; });
+    document.getElementById('ok-name').textContent = v('f-name').split(' ')[0] || 'there';
+    okBox.hidden = false;
+  } catch (err) {
+    submitBtn.disabled = false; submitBtn.textContent = 'Request my free mockup';
+    fallback();
+  }
 });
 document.getElementById('copy-request').addEventListener('click', e => copyText(composed.value, e.currentTarget, composed));
 </script>
